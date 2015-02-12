@@ -897,7 +897,7 @@ if (typeof module === 'object') {
                     editorElement;
 
                 if (node && node.getAttribute('data-medium-element') && node.children.length === 0 && !(self.options.disableReturn || node.getAttribute('data-disable-return'))) {
-                    self.options.ownerDocument.execCommand('formatBlock', false, 'p');
+                    self.options.ownerDocument.execCommand('formatBlock', false, null);
                 }
                 if (e.which === keyCode.ENTER) {
                     node = getSelectionStart.call(self);
@@ -910,7 +910,7 @@ if (typeof module === 'object') {
 
                             // paragraph creation should not be forced within a header tag
                             if (!/h\d/.test(tagName)) {
-                                self.options.ownerDocument.execCommand('formatBlock', false, 'p');
+                                self.options.ownerDocument.execCommand('formatBlock', false, null);
                             }
                         }
                         if (tagName === 'a') {
