@@ -1743,8 +1743,8 @@ if (typeof module === 'object') {
         showToolbar: function () {
             if (this.toolbar && !this.isToolbarShown()) {
                 this.toolbar.classList.add('medium-editor-toolbar-active');
-                if (this.onShowToolbar) {
-                    this.onShowToolbar();
+                if (this.options.onShowToolbar) {
+                    this.options.onShowToolbar();
                 }
             }
         },
@@ -1753,8 +1753,8 @@ if (typeof module === 'object') {
             if (this.isToolbarShown()) {
                 this.toolbar.classList.remove('medium-editor-toolbar-active');
                 // TODO: this should be an option?
-                if (this.onHideToolbar) {
-                    this.onHideToolbar();
+                if (this.options.onHideToolbar) {
+                    this.options.onHideToolbar();
                 }
             }
         },
