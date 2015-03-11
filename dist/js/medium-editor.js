@@ -1524,7 +1524,8 @@ if (typeof module === 'object') {
                 }
 
             } else if (!selection.isCollapsed) {
-                range = selection.getRangeAt(0);
+                //range = selection.getRangeAt(0);
+                range = $('.selected-active')[0]; // Always display the toolbar above the selected element.
                 boundary = range.getBoundingClientRect();
                 middleBoundary = (boundary.left + boundary.right) / 2;
 
