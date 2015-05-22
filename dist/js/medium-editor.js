@@ -1523,7 +1523,8 @@ if (typeof module === 'object') {
                     this.toolbar.style.left = (containerCenter - halfOffsetWidth) + "px";
                 }
 
-            } else if (!selection.isCollapsed) {
+            }
+            // else if (!selection.isCollapsed) {
                 //range = selection.getRangeAt(0);
                 range = $('.selected-active')[0]; // Always display the toolbar above the selected element.
                 boundary = range.getBoundingClientRect();
@@ -1545,7 +1546,7 @@ if (typeof module === 'object') {
                 } else {
                     this.toolbar.style.left = defaultLeft + middleBoundary + 'px';
                 }
-            }
+            //}
 
             this.hideAnchorPreview();
 
@@ -2240,7 +2241,7 @@ if (typeof module === 'object') {
                         paragraphs = e.clipboardData.getData(dataFormatPlain).split(/[\r\n]/g);
                         for (p = 0; p < paragraphs.length; p += 1) {
                             if (paragraphs[p] !== '') {
-                                html += '<p>' + self.htmlEntities(paragraphs[p]) + '</p>';
+                                html += self.htmlEntities(paragraphs[p]) + '<br />';
                             }
                         }
                         self.insertHTML(html);
