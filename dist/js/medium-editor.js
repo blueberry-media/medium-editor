@@ -727,6 +727,7 @@ var Util;
             }
             if (selectionData.tagName === tagName) {
                 tagName = null;
+		console.log("placing null instead of p");
             }
             // When IE we need to add <> to heading elements and
             //  blockquote needs to be called as indent
@@ -5340,7 +5341,6 @@ var Toolbar;
             // position the toolbar at left 0, so we can get the real width of the toolbar
             this.getToolbarElement().style.left = '0';
 
-
             var windowWidth = this.options.contentWindow.innerWidth,
                 range = $('.selected-active')[0],// Always display the toolbar above the selected element. was: range = selection.getRangeAt(0)
                 boundary = range.getBoundingClientRect(),
@@ -5369,7 +5369,6 @@ var Toolbar;
             } else {
                 toolbarElement.style.left = defaultLeft + middleBoundary + 'px';
             }
-            console.log("pos set");
         }
     };
 }());
@@ -5461,9 +5460,9 @@ function MediumEditor(elements, options) {
             } else if (Util.isKey(event, Util.keyCode.ENTER)) {
                 // hitting return in the begining of a header will create empty header elements before the current one
                 // instead, make "<p><br></p>" element, which are what happens if you hit return in an empty paragraph
-                //p = this.options.ownerDocument.createElement('p');
+                p = this.options.ownerDocument.createElement('br');
                 //p.innerHTML = '<br>';
-                //node.previousElementSibling.parentNode.insertBefore(p, node);
+                node.previousElementSibling.parentNode.insertBefore(p, node);
                 event.preventDefault();
             }
         } else if (Util.isKey(event, Util.keyCode.DELETE) &&
