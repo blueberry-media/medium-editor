@@ -1,34 +1,7 @@
-/*global NodeFilter, console, Selection*/
-
-var Util;
+/*global NodeFilter*/
 
 (function (window) {
     'use strict';
-
-    // Params: Array, Boolean, Object
-    function getProp(parts, create, context) {
-        if (!context) {
-            context = window;
-        }
-
-        try {
-            for (var i = 0; i < parts.length; i++) {
-                var p = parts[i];
-                if (!(p in context)) {
-                    if (create) {
-                        context[p] = {};
-                    } else {
-                        return;
-                    }
-                }
-                context = context[p];
-            }
-            return context;
-        } catch (e) {
-            // 'p in context' throws an exception when context is a number, boolean, etc. rather than an object,
-            // so in that corner case just return undefined (by having no return statement)
-        }
-    }
 
     function copyInto(overwrite, dest) {
         var prop,
@@ -49,11 +22,28 @@ var Util;
         return dest;
     }
 
-    Util = {
+    // https://developer.mozilla.org/en-US/docs/Web/API/Node/contains
+    // Some browsers (including phantom) don't return true for Node.contains(child)
+    // if child is a text node.  Detect these cases here and use a fallback
+    // for calls to Util.isDescendant()
+    var nodeContainsWorksWithTextNodes = false;
+    try {
+        var testParent = document.createElement('div'),
+            testText = document.createTextNode(' ');
+        testParent.appendChild(testText);
+        nodeContainsWorksWithTextNodes = testParent.contains(testText);
+    } catch (exc) {}
+
+    var Util = {
 
         // http://stackoverflow.com/questions/17907445/how-to-detect-ie11#comment30165888_17907562
         // by rg89
         isIE: ((navigator.appName === 'Microsoft Internet Explorer') || ((navigator.appName === 'Netscape') && (new RegExp('Trident/.*rv:([0-9]{1,}[.0-9]{0,})').exec(navigator.userAgent) !== null))),
+
+        isEdge: (/Edge\/\d+/).exec(navigator.userAgent) !== null,
+
+        // if firefox
+        isFF: (navigator.userAgent.toLowerCase().indexOf('firefox') > -1),
 
         // http://stackoverflow.com/a/11752084/569101
         isMac: (window.navigator.platform.toUpperCase().indexOf('MAC') >= 0),
@@ -65,7 +55,9 @@ var Util;
             ENTER: 13,
             ESCAPE: 27,
             SPACE: 32,
-            DELETE: 46
+            DELETE: 46,
+            K: 75, // K keycode, and not k
+            M: 77
         },
 
         /**
@@ -73,7 +65,7 @@ var Util;
          * See #591
          */
         isMetaCtrlKey: function (event) {
-            if ((this.isMac && event.metaKey) || (!this.isMac && event.ctrlKey)) {
+            if ((Util.isMac && event.metaKey) || (!Util.isMac && event.ctrlKey)) {
                 return true;
             }
 
@@ -87,12 +79,7 @@ var Util;
          * @see : http://stackoverflow.com/q/4471582/569101
          */
         isKey: function (event, keys) {
-            var keyCode = event.which;
-
-            // getting the key code from event
-            if (null === keyCode) {
-                keyCode = event.charCode !== null ? event.charCode : event.keyCode;
-            }
+            var keyCode = Util.getKeyCode(event);
 
             // it's not an array let's just compare strings!
             if (false === Array.isArray(keys)) {
@@ -106,7 +93,28 @@ var Util;
             return true;
         },
 
-        parentElements: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre'],
+        getKeyCode: function (event) {
+            var keyCode = event.which;
+
+            // getting the key code from event
+            if (null === keyCode) {
+                keyCode = event.charCode !== null ? event.charCode : event.keyCode;
+            }
+
+            return keyCode;
+        },
+
+        blockContainerElementNames: [
+            // elements our editor generates
+            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'li', 'ol',
+            // all other known block elements
+            'address', 'article', 'aside', 'audio', 'canvas', 'dd', 'dl', 'dt', 'fieldset',
+            'figcaption', 'figure', 'footer', 'form', 'header', 'hgroup', 'main', 'nav',
+            'noscript', 'output', 'section', 'video',
+            'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td'
+        ],
+
+        emptyElementNames: ['br', 'col', 'colgroup', 'hr', 'img', 'input', 'source', 'wbr'],
 
         extend: function extend(/* dest, source1, source2, ...*/) {
             var args = [true].concat(Array.prototype.slice.call(arguments));
@@ -118,14 +126,167 @@ var Util;
             return copyInto.apply(this, args);
         },
 
-        derives: function derives(base, derived) {
-            var origPrototype = derived.prototype;
-            function Proto() { }
-            Proto.prototype = base.prototype;
-            derived.prototype = new Proto();
-            derived.prototype.constructor = base;
-            derived.prototype = copyInto(false, derived.prototype, origPrototype);
-            return derived;
+        /*
+         * Create a link around the provided text nodes which must be adjacent to each other and all be
+         * descendants of the same closest block container. If the preconditions are not met, unexpected
+         * behavior will result.
+         */
+        createLink: function (document, textNodes, href, target) {
+            var anchor = document.createElement('a');
+            Util.moveTextRangeIntoElement(textNodes[0], textNodes[textNodes.length - 1], anchor);
+            anchor.setAttribute('href', href);
+            if (target) {
+                anchor.setAttribute('target', target);
+            }
+            return anchor;
+        },
+
+        /*
+         * Given the provided match in the format {start: 1, end: 2} where start and end are indices into the
+         * textContent of the provided element argument, modify the DOM inside element to ensure that the text
+         * identified by the provided match can be returned as text nodes that contain exactly that text, without
+         * any additional text at the beginning or end of the returned array of adjacent text nodes.
+         *
+         * The only DOM manipulation performed by this function is splitting the text nodes, non-text nodes are
+         * not affected in any way.
+         */
+        findOrCreateMatchingTextNodes: function (document, element, match) {
+            var treeWalker = document.createTreeWalker(element, NodeFilter.SHOW_ALL, null, false),
+                matchedNodes = [],
+                currentTextIndex = 0,
+                startReached = false,
+                currentNode = null,
+                newNode = null;
+
+            while ((currentNode = treeWalker.nextNode()) !== null) {
+                if (currentNode.nodeType > 3) {
+                    continue;
+                } else if (currentNode.nodeType === 3) {
+                    if (!startReached && match.start < (currentTextIndex + currentNode.nodeValue.length)) {
+                        startReached = true;
+                        newNode = Util.splitStartNodeIfNeeded(currentNode, match.start, currentTextIndex);
+                    }
+                    if (startReached) {
+                        Util.splitEndNodeIfNeeded(currentNode, newNode, match.end, currentTextIndex);
+                    }
+                    if (startReached && currentTextIndex === match.end) {
+                        break; // Found the node(s) corresponding to the link. Break out and move on to the next.
+                    } else if (startReached && currentTextIndex > (match.end + 1)) {
+                        throw new Error('PerformLinking overshot the target!'); // should never happen...
+                    }
+
+                    if (startReached) {
+                        matchedNodes.push(newNode || currentNode);
+                    }
+
+                    currentTextIndex += currentNode.nodeValue.length;
+                    if (newNode !== null) {
+                        currentTextIndex += newNode.nodeValue.length;
+                        // Skip the newNode as we'll already have pushed it to the matches
+                        treeWalker.nextNode();
+                    }
+                    newNode = null;
+                } else if (currentNode.tagName.toLowerCase() === 'img') {
+                    if (!startReached && (match.start <= currentTextIndex)) {
+                        startReached = true;
+                    }
+                    if (startReached) {
+                        matchedNodes.push(currentNode);
+                    }
+                }
+            }
+            return matchedNodes;
+        },
+
+        /*
+         * Given the provided text node and text coordinates, split the text node if needed to make it align
+         * precisely with the coordinates.
+         *
+         * This function is intended to be called from Util.findOrCreateMatchingTextNodes.
+         */
+        splitStartNodeIfNeeded: function (currentNode, matchStartIndex, currentTextIndex) {
+            if (matchStartIndex !== currentTextIndex) {
+                return currentNode.splitText(matchStartIndex - currentTextIndex);
+            }
+            return null;
+        },
+
+        /*
+         * Given the provided text node and text coordinates, split the text node if needed to make it align
+         * precisely with the coordinates. The newNode argument should from the result of Util.splitStartNodeIfNeeded,
+         * if that function has been called on the same currentNode.
+         *
+         * This function is intended to be called from Util.findOrCreateMatchingTextNodes.
+         */
+        splitEndNodeIfNeeded: function (currentNode, newNode, matchEndIndex, currentTextIndex) {
+            var textIndexOfEndOfFarthestNode,
+                endSplitPoint;
+            textIndexOfEndOfFarthestNode = currentTextIndex + (newNode || currentNode).nodeValue.length +
+                    (newNode ? currentNode.nodeValue.length : 0) -
+                    1;
+            endSplitPoint = (newNode || currentNode).nodeValue.length -
+                    (textIndexOfEndOfFarthestNode + 1 - matchEndIndex);
+            if (textIndexOfEndOfFarthestNode >= matchEndIndex &&
+                    currentTextIndex !== textIndexOfEndOfFarthestNode &&
+                    endSplitPoint !== 0) {
+                (newNode || currentNode).splitText(endSplitPoint);
+            }
+        },
+
+        /*
+        * Take an element, and break up all of its text content into unique pieces such that:
+         * 1) All text content of the elements are in separate blocks. No piece of text content should span
+         *    across multiple blocks. This means no element return by this function should have
+         *    any blocks as children.
+         * 2) The union of the textcontent of all of the elements returned here covers all
+         *    of the text within the element.
+         *
+         *
+         * EXAMPLE:
+         * In the event that we have something like:
+         *
+         * <blockquote>
+         *   <p>Some Text</p>
+         *   <ol>
+         *     <li>List Item 1</li>
+         *     <li>List Item 2</li>
+         *   </ol>
+         * </blockquote>
+         *
+         * This function would return these elements as an array:
+         *   [ <p>Some Text</p>, <li>List Item 1</li>, <li>List Item 2</li> ]
+         *
+         * Since the <blockquote> and <ol> elements contain blocks within them they are not returned.
+         * Since the <p> and <li>'s don't contain block elements and cover all the text content of the
+         * <blockquote> container, they are the elements returned.
+         */
+        splitByBlockElements: function (element) {
+            if (element.nodeType !== 3 && element.nodeType !== 1) {
+                return [];
+            }
+
+            var toRet = [],
+                blockElementQuery = MediumEditor.util.blockContainerElementNames.join(',');
+
+            if (element.nodeType === 3 || element.querySelectorAll(blockElementQuery).length === 0) {
+                return [element];
+            }
+
+            for (var i = 0; i < element.childNodes.length; i++) {
+                var child = element.childNodes[i];
+                if (child.nodeType === 3) {
+                    toRet.push(child);
+                } else if (child.nodeType === 1) {
+                    var blockElements = child.querySelectorAll(blockElementQuery);
+                    if (blockElements.length === 0) {
+                        toRet.push(child);
+                    } else {
+                        toRet = toRet.concat(MediumEditor.util.splitByBlockElements(child));
+                    }
+                }
+            }
+
+            return toRet;
         },
 
         // Find the next node in the DOM tree that represents any text that is being
@@ -157,12 +318,35 @@ var Util;
             return nextNode;
         },
 
+        // Find an element's previous sibling within a medium-editor element
+        // If one doesn't exist, find the closest ancestor's previous sibling
+        findPreviousSibling: function (node) {
+            if (!node || Util.isMediumEditorElement(node)) {
+                return false;
+            }
+
+            var previousSibling = node.previousSibling;
+            while (!previousSibling && !Util.isMediumEditorElement(node.parentNode)) {
+                node = node.parentNode;
+                previousSibling = node.previousSibling;
+            }
+
+            return previousSibling;
+        },
+
         isDescendant: function isDescendant(parent, child, checkEquality) {
             if (!parent || !child) {
                 return false;
             }
-            if (checkEquality && parent === child) {
-                return true;
+            if (parent === child) {
+                return !!checkEquality;
+            }
+            // If parent is not an element, it can't have any descendants
+            if (parent.nodeType !== 1) {
+                return false;
+            }
+            if (nodeContainsWorksWithTextNodes || child.nodeType !== 3) {
+                return parent.contains(child);
             }
             var node = child.parentNode;
             while (node !== null) {
@@ -178,8 +362,6 @@ var Util;
         isElement: function isElement(obj) {
             return !!(obj && obj.nodeType === 1);
         },
-
-        now: Date.now,
 
         // https://github.com/jashkenas/underscore
         throttle: function (func, wait) {
@@ -236,7 +418,7 @@ var Util;
                         return current;
                     }
                     // do not traverse upwards past the nearest containing editor
-                    if (current.getAttribute('data-medium-element')) {
+                    if (Util.isMediumEditorElement(current)) {
                         return false;
                     }
                 }
@@ -257,23 +439,37 @@ var Util;
         insertHTMLCommand: function (doc, html) {
             var selection, range, el, fragment, node, lastNode, toReplace;
 
-            if (doc.queryCommandSupported('insertHTML')) {
+            /* Edge's implementation of insertHTML is just buggy right now:
+             * - Doesn't allow leading white space at the beginning of an element
+             * - Found a case when a <font size="2"> tag was inserted when calling alignCenter inside a blockquote
+             *
+             * There are likely many other bugs, these are just the ones we found so far.
+             * For now, let's just use the same fallback we did for IE
+             */
+            if (!MediumEditor.util.isEdge && doc.queryCommandSupported('insertHTML')) {
                 try {
                     return doc.execCommand('insertHTML', false, html);
                 } catch (ignore) {}
             }
 
-            selection = doc.defaultView.getSelection();
-            if (selection.getRangeAt && selection.rangeCount) {
+            selection = doc.getSelection();
+            if (selection.rangeCount) {
                 range = selection.getRangeAt(0);
                 toReplace = range.commonAncestorContainer;
-                // Ensure range covers maximum amount of nodes as possible
-                // By moving up the DOM and selecting ancestors whose only child is the range
-                if ((toReplace.nodeType === 3 && toReplace.nodeValue === range.toString()) ||
+
+                // https://github.com/yabwe/medium-editor/issues/748
+                // If the selection is an empty editor element, create a temporary text node inside of the editor
+                // and select it so that we don't delete the editor element
+                if (Util.isMediumEditorElement(toReplace) && !toReplace.firstChild) {
+                    range.selectNode(toReplace.appendChild(doc.createTextNode('')));
+                } else if ((toReplace.nodeType === 3 && range.startOffset === 0 && range.endOffset === toReplace.nodeValue.length) ||
                         (toReplace.nodeType !== 3 && toReplace.innerHTML === range.toString())) {
-                    while (toReplace.parentNode &&
+                    // Ensure range covers maximum amount of nodes as possible
+                    // By moving up the DOM and selecting ancestors whose only child is the range
+                    while (!Util.isMediumEditorElement(toReplace) &&
+                            toReplace.parentNode &&
                             toReplace.parentNode.childNodes.length === 1 &&
-                            !toReplace.parentNode.getAttribute('data-medium-element')) {
+                            !Util.isMediumEditorElement(toReplace.parentNode)) {
                         toReplace = toReplace.parentNode;
                     }
                     range.selectNode(toReplace);
@@ -300,46 +496,66 @@ var Util;
             }
         },
 
-        getSelectionRange: function (ownerDocument) {
-            this.deprecated('Util.getSelectionRange', 'Selection.getSelectionRange', 'v5.0.0');
-
-            return Selection.getSelectionRange(ownerDocument);
-        },
-
-        getSelectionStart: function (ownerDocument) {
-            this.deprecated('Util.getSelectionStart', 'Selection.getSelectionStart', 'v5.0.0');
-
-            return Selection.getSelectionStart(ownerDocument);
-        },
-
-        getSelectionData: function (el) {
-            this.deprecated('Util.getSelectionData', 'Selection.getSelectionData', 'v5.0.0');
-
-            return Selection.getSelectionData(el);
-        },
-
         execFormatBlock: function (doc, tagName) {
-            var selectionData = Selection.getSelectionData(Selection.getSelectionStart(doc));
-            // FF handles blockquote differently on formatBlock
-            // allowing nesting, we need to use outdent
-            // https://developer.mozilla.org/en-US/docs/Rich-Text_Editing_in_Mozilla
-            if (tagName === 'blockquote' && selectionData.el &&
-                    selectionData.el.parentNode.tagName.toLowerCase() === 'blockquote') {
-                return doc.execCommand('outdent', false, null);
-            }
-            if (selectionData.tagName === tagName) {
-                tagName = 'p';
-            }
-            // When IE we need to add <> to heading elements and
-            //  blockquote needs to be called as indent
-            // http://stackoverflow.com/questions/10741831/execcommand-formatblock-headings-in-ie
-            // http://stackoverflow.com/questions/1816223/rich-text-editor-with-blockquote-function/1821777#1821777
-            if (this.isIE) {
-                if (tagName === 'blockquote') {
+            // Get the top level block element that contains the selection
+            var blockContainer = Util.getTopBlockContainer(MediumEditor.selection.getSelectionStart(doc)),
+                childNodes;
+
+            // Special handling for blockquote
+            if (tagName === 'blockquote') {
+                if (blockContainer) {
+                    childNodes = Array.prototype.slice.call(blockContainer.childNodes);
+                    // Check if the blockquote has a block element as a child (nested blocks)
+                    if (childNodes.some(function (childNode) {
+                        return Util.isBlockContainer(childNode);
+                    })) {
+                        // FF handles blockquote differently on formatBlock
+                        // allowing nesting, we need to use outdent
+                        // https://developer.mozilla.org/en-US/docs/Rich-Text_Editing_in_Mozilla
+                        return doc.execCommand('outdent', false, null);
+                    }
+                }
+
+                // When IE blockquote needs to be called as indent
+                // http://stackoverflow.com/questions/1816223/rich-text-editor-with-blockquote-function/1821777#1821777
+                if (Util.isIE) {
                     return doc.execCommand('indent', false, tagName);
                 }
+            }
+
+            // If the blockContainer is already the element type being passed in
+            // treat it as 'undo' formatting and just convert it to a <p>
+            if (blockContainer && tagName === blockContainer.nodeName.toLowerCase()) {
+                tagName = 'p';
+            }
+
+            // When IE we need to add <> to heading elements
+            // http://stackoverflow.com/questions/10741831/execcommand-formatblock-headings-in-ie
+            if (Util.isIE) {
                 tagName = '<' + tagName + '>';
             }
+
+            // When FF, IE and Edge, we have to handle blockquote node seperately as 'formatblock' does not work.
+            // https://developer.mozilla.org/en-US/docs/Web/API/Document/execCommand#Commands
+            if (blockContainer && blockContainer.nodeName.toLowerCase() === 'blockquote') {
+                // For IE, just use outdent
+                if (Util.isIE && tagName === '<p>') {
+                    return doc.execCommand('outdent', false, tagName);
+                }
+
+                // For Firefox and Edge, make sure there's a nested block element before calling outdent
+                if ((Util.isFF || Util.isEdge) && tagName === 'p') {
+                    childNodes = Array.prototype.slice.call(blockContainer.childNodes);
+                    // If there are some non-block elements we need to wrap everything in a <p> before we outdent
+                    if (childNodes.some(function (childNode) {
+                        return !Util.isBlockContainer(childNode);
+                    })) {
+                        doc.execCommand('formatBlock', false, tagName);
+                    }
+                    return doc.execCommand('outdent', false, tagName);
+                }
+            }
+
             return doc.execCommand('formatBlock', false, tagName);
         },
 
@@ -355,7 +571,7 @@ var Util;
          */
         setTargetBlank: function (el, anchorUrl) {
             var i, url = anchorUrl || false;
-            if (el.tagName.toLowerCase() === 'a') {
+            if (el.nodeName.toLowerCase() === 'a') {
                 el.target = '_blank';
             } else {
                 el = el.getElementsByTagName('a');
@@ -368,11 +584,30 @@ var Util;
             }
         },
 
+        /*
+         * this function is called to explicitly remove the target='_blank' as FF holds on to _blank value even
+         * after unchecking the checkbox on anchor form
+         */
+        removeTargetBlank: function (el, anchorUrl) {
+            var i;
+            if (el.nodeName.toLowerCase() === 'a') {
+                el.removeAttribute('target');
+            } else {
+                el = el.getElementsByTagName('a');
+
+                for (i = 0; i < el.length; i += 1) {
+                    if (anchorUrl === el[i].attributes.href.value) {
+                        el[i].removeAttribute('target');
+                    }
+                }
+            }
+        },
+
         addClassToAnchors: function (el, buttonClass) {
             var classes = buttonClass.split(' '),
                 i,
                 j;
-            if (el.tagName.toLowerCase() === 'a') {
+            if (el.nodeName.toLowerCase() === 'a') {
                 for (j = 0; j < classes.length; j += 1) {
                     el.classList.add(classes[j]);
                 }
@@ -390,19 +625,19 @@ var Util;
             if (!node) {
                 return false;
             }
-            if (node.tagName.toLowerCase() === 'li') {
+            if (node.nodeName.toLowerCase() === 'li') {
                 return true;
             }
 
             var parentNode = node.parentNode,
-                tagName = parentNode.tagName.toLowerCase();
-            while (this.parentElements.indexOf(tagName) === -1 && tagName !== 'div') {
+                tagName = parentNode.nodeName.toLowerCase();
+            while (tagName === 'li' || (!Util.isBlockContainer(parentNode) && tagName !== 'div')) {
                 if (tagName === 'li') {
                     return true;
                 }
                 parentNode = parentNode.parentNode;
-                if (parentNode && parentNode.tagName) {
-                    tagName = parentNode.tagName.toLowerCase();
+                if (parentNode) {
+                    tagName = parentNode.nodeName.toLowerCase();
                 } else {
                     return false;
                 }
@@ -411,25 +646,19 @@ var Util;
         },
 
         cleanListDOM: function (ownerDocument, element) {
-            if (element.tagName.toLowerCase() !== 'li') {
+            if (element.nodeName.toLowerCase() !== 'li') {
                 return;
             }
 
             var list = element.parentElement;
 
-            if (list.parentElement.tagName.toLowerCase() === 'p') { // yes we need to clean up
-                this.unwrap(list.parentElement, ownerDocument);
+            if (list.parentElement.nodeName.toLowerCase() === 'p') { // yes we need to clean up
+                Util.unwrap(list.parentElement, ownerDocument);
 
                 // move cursor at the end of the text inside the list
                 // for some unknown reason, the cursor is moved to end of the "visual" line
-                Selection.moveCursor(ownerDocument, element.firstChild, element.firstChild.textContent.length);
+                MediumEditor.selection.moveCursor(ownerDocument, element.firstChild, element.firstChild.textContent.length);
             }
-        },
-
-        unwrapElement: function (element) {
-            this.deprecated('unwrapElement', 'unwrap', 'v5.0.0');
-
-            this.unwrap(element, element.ownerDocument);
         },
 
         /* splitDOMTree
@@ -531,7 +760,7 @@ var Util;
                 return false;
             }
 
-            var rootNode = this.findCommonRoot(startNode, endNode);
+            var rootNode = Util.findCommonRoot(startNode, endNode);
             if (!rootNode) {
                 return false;
             }
@@ -558,11 +787,11 @@ var Util;
             for (var i = 0; i < rootNode.childNodes.length; i++) {
                 nextNode = rootNode.childNodes[i];
                 if (!firstChild) {
-                    if (this.isDescendant(nextNode, startNode, true)) {
+                    if (Util.isDescendant(nextNode, startNode, true)) {
                         firstChild = nextNode;
                     }
                 } else {
-                    if (this.isDescendant(nextNode, endNode, true)) {
+                    if (Util.isDescendant(nextNode, endNode, true)) {
                         lastChild = nextNode;
                         break;
                     } else {
@@ -579,7 +808,7 @@ var Util;
                 firstChild.parentNode.removeChild(firstChild);
                 fragment.appendChild(firstChild);
             } else {
-                fragment.appendChild(this.splitOffDOMTree(firstChild, startNode));
+                fragment.appendChild(Util.splitOffDOMTree(firstChild, startNode));
             }
 
             // add any elements between firstChild & lastChild
@@ -593,7 +822,7 @@ var Util;
                 lastChild.parentNode.removeChild(lastChild);
                 fragment.appendChild(lastChild);
             } else {
-                fragment.appendChild(this.splitOffDOMTree(lastChild, endNode, true));
+                fragment.appendChild(Util.splitOffDOMTree(lastChild, endNode, true));
             }
 
             // Add fragment into passed in element
@@ -625,8 +854,8 @@ var Util;
         },
 
         findCommonRoot: function (inNode1, inNode2) {
-            var depth1 = this.depthOfNode(inNode1),
-                depth2 = this.depthOfNode(inNode2),
+            var depth1 = Util.depthOfNode(inNode1),
+                depth2 = Util.depthOfNode(inNode2),
                 node1 = inNode1,
                 node2 = inNode2;
 
@@ -649,6 +878,104 @@ var Util;
         },
         /* END - based on http://stackoverflow.com/a/6183069 */
 
+        isElementAtBeginningOfBlock: function (node) {
+            var textVal,
+                sibling;
+            while (!Util.isBlockContainer(node) && !Util.isMediumEditorElement(node)) {
+                sibling = node;
+                while (sibling = sibling.previousSibling) {
+                    textVal = sibling.nodeType === 3 ? sibling.nodeValue : sibling.textContent;
+                    if (textVal.length > 0) {
+                        return false;
+                    }
+                }
+                node = node.parentNode;
+            }
+            return true;
+        },
+
+        isMediumEditorElement: function (element) {
+            return element && element.getAttribute && !!element.getAttribute('data-medium-editor-element');
+        },
+
+        getContainerEditorElement: function (element) {
+            return Util.traverseUp(element, function (node) {
+                return Util.isMediumEditorElement(node);
+            });
+        },
+
+        isBlockContainer: function (element) {
+            return element && element.nodeType !== 3 && Util.blockContainerElementNames.indexOf(element.nodeName.toLowerCase()) !== -1;
+        },
+
+        /* Finds the closest ancestor which is a block container element
+         * If element is within editor element but not within any other block element,
+         * the editor element is returned
+         */
+        getClosestBlockContainer: function (node) {
+            return Util.traverseUp(node, function (node) {
+                return Util.isBlockContainer(node) || Util.isMediumEditorElement(node);
+            });
+        },
+
+        /* Finds highest level ancestor element which is a block container element
+         * If element is within editor element but not within any other block element,
+         * the editor element is returned
+         */
+        getTopBlockContainer: function (element) {
+            var topBlock = Util.isBlockContainer(element) ? element : false;
+            Util.traverseUp(element, function (el) {
+                if (Util.isBlockContainer(el)) {
+                    topBlock = el;
+                }
+                if (!topBlock && Util.isMediumEditorElement(el)) {
+                    topBlock = el;
+                    return true;
+                }
+                return false;
+            });
+            return topBlock;
+        },
+
+        getFirstSelectableLeafNode: function (element) {
+            while (element && element.firstChild) {
+                element = element.firstChild;
+            }
+
+            // We don't want to set the selection to an element that can't have children, this messes up Gecko.
+            element = Util.traverseUp(element, function (el) {
+                return Util.emptyElementNames.indexOf(el.nodeName.toLowerCase()) === -1;
+            });
+            // Selecting at the beginning of a table doesn't work in PhantomJS.
+            if (element.nodeName.toLowerCase() === 'table') {
+                var firstCell = element.querySelector('th, td');
+                if (firstCell) {
+                    element = firstCell;
+                }
+            }
+            return element;
+        },
+
+        // TODO: remove getFirstTextNode AND _getFirstTextNode when jumping in 6.0.0 (no code references)
+        getFirstTextNode: function (element) {
+            Util.warn('getFirstTextNode is deprecated and will be removed in version 6.0.0');
+            return Util._getFirstTextNode(element);
+        },
+
+        _getFirstTextNode: function (element) {
+            if (element.nodeType === 3) {
+                return element;
+            }
+
+            for (var i = 0; i < element.childNodes.length; i++) {
+                var textNode = Util._getFirstTextNode(element.childNodes[i]);
+                if (textNode !== null) {
+                    return textNode;
+                }
+            }
+            return null;
+        },
+
         ensureUrlHasProtocol: function (url) {
             if (url.indexOf('://') === -1) {
                 return 'http://' + url;
@@ -658,7 +985,7 @@ var Util;
 
         warn: function () {
             if (window.console !== undefined && typeof window.console.warn === 'function') {
-                window.console.warn.apply(console, arguments);
+                window.console.warn.apply(window.console, arguments);
             }
         },
 
@@ -687,16 +1014,16 @@ var Util;
 
         cleanupTags: function (el, tags) {
             tags.forEach(function (tag) {
-                if (el.tagName.toLowerCase() === tag) {
+                if (el.nodeName.toLowerCase() === tag) {
                     el.parentNode.removeChild(el);
                 }
-            }, this);
+            });
         },
 
         // get the closest parent
         getClosestTag: function (el, tag) {
-            return this.traverseUp(el, function (element) {
-                return element.tagName.toLowerCase() === tag.toLowerCase();
+            return Util.traverseUp(el, function (element) {
+                return element.nodeName.toLowerCase() === tag.toLowerCase();
             });
         },
 
@@ -715,22 +1042,8 @@ var Util;
             } else {
                 el.parentNode.removeChild(el);
             }
-        },
-
-        setObject: function (name, value, context) {
-            // summary:
-            //      Set a property from a dot-separated string, such as 'A.B.C'
-            var parts = name.split('.'),
-                p = parts.pop(),
-                obj = getProp(parts, true, context);
-            return obj && p ? (obj[p] = value) : undefined; // Object
-        },
-
-        getObject: function (name, create, context) {
-            // summary:
-            //      Get a property from a dot-separated string, such as 'A.B.C'
-            return getProp(name ? name.split('.') : [], create, context); // Object
         }
-
     };
+
+    MediumEditor.util = Util;
 }(window));

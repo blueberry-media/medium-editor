@@ -13,29 +13,27 @@ module.exports = function (grunt) {
             globalConfig: globalConfig
         },
         srcFiles = [
+            'src/js/globals.js',
             'src/js/util.js',
-            'src/js/defaults/buttons.js',
-            'src/js/defaults/options.js',
             'src/js/extension.js',
             'src/js/selection.js',
             'src/js/events.js',
-            'src/js/extensions/deprecated/button.js',
-            'src/js/extensions/deprecated/anchor.js',
-            'src/js/extensions/deprecated/anchor-preview.js',
-            'src/js/extensions/deprecated/fontsize.js',
             'src/js/extensions/button.js',
+            'src/js/defaults/buttons.js',
             'src/js/extensions/form.js',
             'src/js/extensions/anchor.js',
             'src/js/extensions/anchor-preview.js',
             'src/js/extensions/auto-link.js',
-            'src/js/extensions/image-dragging.js',
+            'src/js/extensions/file-dragging.js',
+            'src/js/extensions/keyboard-commands.js',
+            'src/js/extensions/fontname.js',
             'src/js/extensions/fontsize.js',
             'src/js/extensions/paste.js',
             'src/js/extensions/placeholder.js',
-            'src/js/toolbar.js',
-            'src/js/defaults/options.js',
-            'src/js/defaults/extensions.js',
+            'src/js/extensions/toolbar.js',
+            'src/js/extensions/deprecated/image-dragging.js',
             'src/js/core.js',
+            'src/js/defaults/options.js',
             'src/js/version.js'
         ],
         browsers = [{
@@ -51,19 +49,32 @@ module.exports = function (grunt) {
             version: '11',
             platform: 'WIN8.1'
         }, {
+            browserName: 'internet explorer',
+            version: '11',
+            platform: 'Windows 10'
+        }, {
+            browserName: 'MicrosoftEdge',
+            platform: 'Windows 10'
+        }, {
             browserName: 'chrome',
             platform: 'WIN8.1'
         }, {
+            browserName: 'chrome',
+            platform: 'Windows 10'
+        }, {
+            browserName: 'googlechrome',
+            platform: 'OS X 10.10'
+        }, {
             browserName: 'firefox',
             platform: 'WIN8.1'
         }, {
-            browserName: 'safari',
-            platform: 'OS X 10.10'
+            browserName: 'firefox',
+            platform: 'Windows 10'
         }, {
             browserName: 'firefox',
             platform: 'OS X 10.10'
         }, {
-            browserName: 'googlechrome',
+            browserName: 'safari',
             platform: 'OS X 10.10'
         }];
 
@@ -133,7 +144,8 @@ module.exports = function (grunt) {
                         options: {
                             dir: 'reports/jasmine/lcov'
                         }
-                    }]
+                    }],
+                    files: srcFiles.concat('!src/js/extensions/deprecated/*')
                 },
                 summary: true
             }
@@ -184,7 +196,9 @@ module.exports = function (grunt) {
                 'dist/css/themes/default.css': 'src/sass/themes/default.scss',
                 'dist/css/themes/flat.css': 'src/sass/themes/flat.scss',
                 'dist/css/themes/mani.css': 'src/sass/themes/mani.scss',
-                'dist/css/themes/roman.css': 'src/sass/themes/roman.scss'
+                'dist/css/themes/roman.css': 'src/sass/themes/roman.scss',
+                'dist/css/themes/tim.css': 'src/sass/themes/tim.scss',
+                'dist/css/themes/beagle.css': 'src/sass/themes/beagle.scss'
             }
         }
     };
@@ -295,7 +309,7 @@ module.exports = function (grunt) {
 
     gruntConfig.bump = {
         options: {
-            files: ['bower.json', 'package.json', 'src/js/version.js'],
+            files: ['package.json', 'src/js/version.js'],
             updateConfigs: [],
             commit: false,
             createTag: false,

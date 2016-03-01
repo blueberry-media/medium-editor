@@ -1,3 +1,259 @@
+5.14.3 / 2016-02-22
+==================
+* Fix behaviour of "Open in new window" checkbox for Firefox
+* Added instruction to disable file dragging all together
+* Fix issue with image dragging and dropping at end of target
+* Fix issue with extra space when space already exists
+
+5.14.2 / 2016-02-10
+==================
+* Support Microsoft Edge
+  * Fallback to custom insertHTML command instead of built-in command for Edge
+  * Use shim code for detecting input on contenteditable for Edge
+  * Fix issue with converting blockquotes to paragraphs in Edge
+  * Update documentation, fix tests, and include Edge in browser testing
+
+
+5.14.1 / 2016-02-05
+==================
+* Fix issue with saving selection after newline and whitespace text nodes
+* Fix import/export selection to prefer start of nodes over end of nodes
+* Fix for getClosestBlockContainer utility function
+* Fix for getTopBlockContainer utility function
+* Deprecate getFirstTextNode utility function
+
+
+5.14.0 / 2016-01-31
+==================
+* Added pre clean replacements
+* Fixed an infinite loop
+* Handled enter event for empty h2/h3 tag
+
+
+5.13.0 / 2016-01-18
+==================
+* Added stickyTopOffset option to keep on the screen a sticky toolbar
+* Fixed misplacement of buttons when selection is near to the right edge
+* Updated dev dependencies
+* Added reference to README for who is using medium-editor
+
+
+5.12.0 / 2015-12-15
+==================
+* Fix issue with image-only selections
+* Trim src when using the image toolbar button
+* Fix auto linking with comments
+* Documented the process of releasing a new version
+
+
+5.11.0 / 2015-12-05
+==================
+* Updated table extension demo
+* Removed the carriage return character from a demo file
+* Updated checkLinkFormat function to support more schemes
+* Fixed issue with disableExtraSpaces option to allow space at the end of line
+* Use editableInput instead of input event for textarea syncing
+* Fixed style for correct positioning of placeholder
+* Allowed to remove blockquote by pressing delete at beginning of the quote
+* Fixed failing test cases in IE9 and IE10
+
+
+5.10.0 / 2015-10-30
+==================
+* Added disableExtraSpaces option for preventing errant spaces
+* Added editalbeKeydownSpace event
+* Fix issue with return key at the end of text with bad formatting
+* Added new font name extension (beta)
+* Documentation updates and cleanup
+
+
+5.9.0 / 2015-10-19
+==================
+* Add showWhenToolbarIsVisible option for displaying anchor-preview when toolbar is visible
+* Remove trailing whitespace when creating links via anchor extension
+* Fix issue with escaping list items via pressing enter
+* Fix font-awesome links in demo pages
+* Updates to documentation around creating links
+
+
+5.8.3 / 2015-10-08
+==================
+* Fix changing link on images
+
+
+5.8.2 / 2015-09-21
+==================
+* Fix type of elements which can contain auto-links
+
+
+5.8.1 / 2015-09-16
+==================
+* Fix inconsistancies and errors in isDescendant utility method
+
+
+5.8.0 / 2015-09-13
+==================
+* Added relativeContainer options for the toolbar
+* Fix issue with auto-linking across consecutive list-items
+* Added beagle theme
+
+
+5.7.0 / 2015-08-21
+==================
+* Fix backwards compatability issue with how keyboard commands extension handles 'alt'
+* Rewrite which event placeholder extension listens to for hiding/showing placeholder
+  * Fix issue where placeholder is not hidden when calling setContent()
+  * Fix issue where placeholder is displayed incorrectly when hideOnClick option is true
+
+
+5.6.3 / 2015-08-18
+==================
+* Ensure textarea ids are unique on entire page
+* Fix broken auto-link within block elements other than paragraphs
+* Fix issue with editor element being removed in IE11
+* Remove references to global variables from internal code
+
+
+5.6.2 / 2015-08-11
+==================
+* Fix a regression in the paste extension related to `pasteHTML` function
+
+
+5.6.1 / 2015-08-10
+==================
+* Fix issue with creating anchors and restoring selection at the beginning of paragraphs
+* Fix issue with creating anchors and restoring selection within list items and nested blocks
+* Ensure CTRL + M is respected as a way to insert new lines
+
+
+5.6.0 / 2015-08-07
+==================
+* Add new 'tim' theme for medium-editor toolbar
+* Fix issue Chrome generated comment tags when pasting
+* Fix issue where 'editableInput' is triggered multiple times when creating links
+
+
+5.5.4 / 2015-08-04
+==================
+* Fix issue with anchor and selection inconsitencies in IE
+
+
+5.5.3 / 2015-08-03
+==================
+* Fix issue with replacing a pre-existing link
+* Fix issue with selection after creating a link after empty paragraphs
+
+
+5.5.2 / 2015-08-02
+==================
+* Fix issue where block elements where cleaned up incorrectly when pasting
+* Fix anchor form checkboxes to reflect status of selected link
+* Fix issue with creating links in same paragraph as another link
+* Fix issue with creating links after empty paragraphs
+* Ensure all attributes are copied from textareas to divs
+
+
+5.5.1 / 2015-07-23
+==================
+* Fix appearance of anchor form when checkboxes are present
+* Fix breaking issue with standardizeSelectionStart option
+
+
+5.5.0 / 2015-07-21
+==================
+* Add setContent method into core API, which triggers editableInput
+
+
+5.4.1 / 2015-07-20
+==================
+* Fix issue where custom anchor-preview extensions weren't overriding built-in anchor preview
+* Add documentation from wiki into the source code
+
+
+5.4.0 / 2015-07-16
+==================
+* Add support for including 'alt' key in keyboard-commands
+
+
+5.3.0 / 2015-07-07
+==================
+* Fix issue with disabling image drag & drop via imageDragging option
+  * Deprecate image-dragging extension
+  * Introduce file-dragging extension
+* Ensure autolink urls respect targetBlank option
+* Expose importSelection and exportSelection as generic Selection helpers
+
+
+5.2.0 / 2015-06-29
+==================
+* Move allowMultiParagraphSelection into toolbar options
+  * Deprecate global allowMultiParagraphSelection option
+* Fix issue with allowMultiParagraphSelection option over empty elements
+* Fix issue with creating links producing multiple anchor tags
+* Fix issue where anchor preview displays while toolbar is visible
+* Add demo pages for example extension and example button
+
+
+5.1.0 / 2015-06-26
+==================
+* Add showToolbarDefaultAction helper method to form extension
+* Ensure elements generated for textareas have a unique id
+* Ensure all added attributes are removed during destroy
+* Cleanup divs generated by Chrome during justify actions
+* Add parameter to anchorPreview.positionPreview for reusability
+
+
+5.0.0 / 2015-06-18
+==================
+* All deprecated functions have been removed
+* Keyboard Shorcuts are now part of an extension and not attached to specific button/commands
+* Placeholders are now part of an extension with its own dedicated options
+* Toolbar is now an extension with its own dedicated options
+* firstHeader and secondHeader are gone you should use h1 thru h6
+* Support pre-releases
+* Buttons
+  * The array of buttons can now contain objects, for overriding any part of the button object
+    * This replaces the custom object value for the buttonLabels option
+* API
+  * Unique id for MediumEditor instance will now remain unique (regardless of how many instances are created)
+  * .statics references are gone
+  * .trigger supports triggering events without needing to declare the event
+  * .callExtensions(), .setToolbarPosition(), and .hideToolbarDefaultActions() have been removed
+* Extension
+  * .window & .document are now exposed as members of the Extension
+  * init no longer is passed MediumEditor instance as first argument
+* CSS
+  * All classes are now `medium-editor` prefixed
+* Util
+  * getProp, derives, getSelectionData, setObject & getObject are gone
+  * getSelectionRange & getSelectionStart are now in Selection
+
+
+4.12.5 / 2015-06-16
+==================
+* Fix issue with restoring selection within nested block elements
+
+
+4.12.4 / 2015-06-15
+==================
+* Ensure auto-link will never select an empty element (br, hr, input, etc.)
+
+
+4.12.3 / 2015-06-12
+==================
+* Fix bug with un-linked auto-links causing unexpected cursor positioning
+
+
+4.12.2 / 2015-06-10
+==================
+* Fix broken keyboard shortcuts
+
+
+4.12.1 / 2015-06-02
+==================
+* Fix break with updateOnEmptySelection option for static toolbars
+
+
 4.12.0 / 2015-06-01
 ==================
 * Fix pasting links when targetBlank option is being used

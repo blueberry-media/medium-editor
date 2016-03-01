@@ -60,8 +60,21 @@ function isIE() {
     return ((navigator.appName === 'Microsoft Internet Explorer') || ((navigator.appName === 'Netscape') && (new RegExp('Trident/.*rv:([0-9]{1,}[.0-9]{0,})').exec(navigator.userAgent) !== null)));
 }
 
+// If the browser is Edge, returns the version number as a float, otherwise returns 0
+function getEdgeVersion() {
+    var match = /Edge\/(\d+[,.]\d+)/.exec(navigator.userAgent);
+    if (match !== null) {
+        return +match[1];
+    }
+    return 0;
+}
+
 function isFirefox() {
     return navigator.userAgent.toLowerCase().indexOf('firefox') !== -1;
+}
+
+function isSafari() {
+    return navigator.userAgent.toLowerCase().indexOf('safari') !== -1;
 }
 
 function dataURItoBlob(dataURI) {
@@ -89,7 +102,7 @@ function dataURItoBlob(dataURI) {
     return new Blob([ia], {type: mimeString});
 }
 
-// keyCode, ctrlKey, target, relatedTarget, shiftKey
+// keyCode, ctrlKey, target, relatedTarget, shiftKey, altKey
 function fireEvent(element, eventName, options) {
     var evt = prepareEvent(
         element,
@@ -110,7 +123,7 @@ function fireEvent(element, eventName, options) {
  *
  * Example:
  *     var p = document.querySelector('p');
- *     var evt = prepareEvent(p, 'keydown', { keyCode: Util.keyCode.ENTER });
+ *     var evt = prepareEvent(p, 'keydown', { keyCode: MediumEditor.util.keyCode.ENTER });
  *     spyOn(evt, 'preventDefault').and.callThrough();
  *     firePreparedEvent(evt, p, 'keydown');
  *     expect(evt.preventDefault).toHaveBeenCalled();
@@ -154,12 +167,21 @@ function prepareEvent (element, eventName, options) {
             evt.shiftKey = true;
         }
 
+        if (options.altKey) {
+          evt.altKey = true;
+        }
+
         if (eventName.indexOf('drag') !== -1 || eventName === 'drop') {
             evt.dataTransfer = {
                 dropEffect: ''
             };
-            if (!isIE9()) {
-                evt.dataTransfer.files = [dataURItoBlob('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')];
+            // File API only allows access to 'files' on drop, not on any other event
+            if (!isIE9() && eventName === 'drop') {
+                var file = dataURItoBlob('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+                if (!file.type) {
+                    file.type = 'image/gif';
+                }
+                evt.dataTransfer.files = [file];
             }
         }
     } else {
@@ -207,5 +229,12 @@ function selectElementContents(el, options) {
 function selectElementContentsAndFire(el, options) {
     options = options || {};
     selectElementContents(el, options);
-    fireEvent(el, options.eventToFire || 'focus');
+    fireEvent(el, options.eventToFire || 'click');
+    if (options.testDelay !== -1) {
+        if (!options.testDelay) {
+            jasmine.clock().tick(1);
+        } else {
+            jasmine.clock().tick(options.testDelay);
+        }
+    }
 }

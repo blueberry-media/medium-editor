@@ -1,6 +1,5 @@
-/*global MediumEditor, describe, it, expect, spyOn,
-    afterEach, beforeEach, selectElementContents,
-    jasmine, setupTestHelpers, selectElementContentsAndFire */
+/*global selectElementContents,
+         selectElementContentsAndFire */
 
 describe('Pasting content', function () {
     'use strict';
@@ -217,32 +216,6 @@ describe('Pasting content', function () {
     });
 
     describe('using cleanPaste', function () {
-        it('should filter inline rich-text by passing deprecated options', function () {
-            var i,
-                editorEl = this.el,
-                editor = this.newMediumEditor('.editor', {
-                    delay: 200,
-                    forcePlainText: false, // deprecated option
-                    cleanPastedHTML: true // deprecated option
-                });
-
-            for (i = 0; i < inlineTests.length; i += 1) {
-
-                // move caret to editor
-                editorEl.innerHTML = 'Before&nbsp;<span id="editor-inner">&nbsp;</span>&nbsp;after.';
-
-                selectElementContents(document.getElementById('editor-inner'));
-
-                editor.cleanPaste(inlineTests[i].paste);
-                jasmine.clock().tick(100);
-
-                // Firefox and IE: doing an insertHTML while this <span> is selected results in the html being inserted inside of the span
-                // Firefox replace the &nbsp; other either side of the <span> with a space
-                // Webkit: doing an insertHTML while this <span> is selected results in the span being replaced completely
-                expect(editorEl.innerHTML).toMatch(new RegExp('^Before(&nbsp;|\\s)(<span id="editor-inner">)?' + inlineTests[i].output + '(</span>)?(&nbsp;|\\s)after\\.$'));
-            }
-        });
-
         it('should filter inline rich-text', function () {
             var i,
                 editorEl = this.el,
@@ -308,8 +281,44 @@ describe('Pasting content', function () {
             selectElementContents(document.getElementById('editor-inner'));
 
             editor.cleanPaste('<label>div one</label><label>div two</label>');
-
             expect(this.el.innerHTML).toMatch(new RegExp('^Before(&nbsp;|\\s)(<span id="editor-inner">)?<sub>div one</sub><sub>div two</sub>(</span>)?(&nbsp;|\\s)after\\.$'));
+        });
+
+        it('should respect custom replacements before builtin replacements.', function () {
+            var editor = this.newMediumEditor('.editor', {
+                paste: {
+                    forcePlainText: false,
+                    cleanPastedHTML: true,
+                    preCleanReplacements: [[new RegExp(/<\/?o:[a-z]*>/gi), 'foo']]
+                }
+            });
+
+            this.el.innerHTML = 'Before&nbsp;<span id="editor-inner">&nbsp;</span>&nbsp;after.';
+            selectElementContents(document.getElementById('editor-inner'));
+
+            // Normally, the paste extension's regular expressions would clear the `<o:p></o:p>` tags,
+            // but our `preCleanReplacements` should transform them each to "foo" before the default
+            // cleanReplacement has a chance to see it.
+            editor.cleanPaste('<div><o:p></o:p></div>');
+
+            expect(this.el.innerHTML).toMatch(new RegExp('foofoo'));
+        });
+
+        it('should cleanup only pasted element on multi-line when nothing is selected', function () {
+            var editor = this.newMediumEditor('.editor', {
+                paste: {
+                    forcePlainText: false,
+                    cleanPastedHTML: true
+                }
+            });
+
+            this.el.innerHTML = '<div><img src="http://0.0.0.0/ohyeah.png" /></div>';
+
+            selectElementContents(this.el.firstChild, { collapse: true });
+
+            editor.cleanPaste('<table><tr><td>test</td><td><br/></td></tr></table>');
+
+            expect(this.el.innerHTML).toContain('<img src="http://0.0.0.0/ohyeah.png"></div>');
         });
     });
 
@@ -319,6 +328,23 @@ describe('Pasting content', function () {
             selectElementContents(this.el.firstChild);
             editor.pasteHTML('<p class="some-class" style="font-weight: bold" dir="ltr"><meta name="description" content="test" />test</p>');
             expect(editor.elements[0].innerHTML).toBe('<p>test</p>');
+        });
+
+        it('should not remove node with "empty" content', function () {
+            var editor = this.newMediumEditor('.editor', {
+                paste: {
+                    forcePlainText: false,
+                    cleanPastedHTML: true
+                }
+            });
+
+            this.el.innerHTML = '<div>this is a div</div><figure id="editor-inner">and this is a figure</figure>.';
+
+            selectElementContents(this.el.firstChild);
+
+            editor.pasteHTML('<table><tr><td>test</td><td><br/></td></tr></table>');
+
+            expect(this.el.innerHTML).toContain('<table><tbody><tr><td>test</td><td><br></td></tr></tbody></table>');
         });
 
         it('should accept a list of attrs to clean up', function () {
@@ -387,7 +413,7 @@ describe('Pasting content', function () {
                 };
 
             for (i = 0; i < textTests.length; i += 1) {
-                editorEl.innerHTML = '<div id="editor-inner">&nbsp</div>';
+                editorEl.innerHTML = '<div id="editor-inner">&nbsp;</div>';
 
                 range = document.createRange();
                 range.selectNodeContents(editorEl.firstChild);

@@ -1,6 +1,3 @@
-/*global Util, Selection, Extension */
-var PasteHandler;
-
 (function () {
     'use strict';
     /*jslint regexp: true*/
@@ -12,7 +9,6 @@ var PasteHandler;
     */
     function createReplacements() {
         return [
-
             // replace two bogus tags that begin pastes from google docs
             [new RegExp(/<[^>]*docs-internal-guid[^>]*>/gi), ''],
             [new RegExp(/<\/b>(<br[^>]*>)?$/gi), ''],
@@ -42,12 +38,16 @@ var PasteHandler;
             [new RegExp(/\n+<p/gi), '<p'],
 
             // Microsoft Word makes these odd tags, like <o:p></o:p>
-            [new RegExp(/<\/?o:[a-z]*>/gi), '']
+            [new RegExp(/<\/?o:[a-z]*>/gi), ''],
+
+            // cleanup comments added by Chrome when pasting html
+            ['<!--EndFragment-->', ''],
+            ['<!--StartFragment-->', '']
         ];
     }
     /*jslint regexp: false*/
 
-    PasteHandler = Extension.extend({
+    var PasteHandler = MediumEditor.Extension.extend({
         /* Paste Options */
 
         /* forcePlainText: [boolean]
@@ -60,9 +60,17 @@ var PasteHandler;
          */
         cleanPastedHTML: false,
 
+        /* preCleanReplacements: [Array]
+         * custom pairs (2 element arrays) of RegExp and replacement text to use during past when
+         * __forcePlainText__ or __cleanPastedHTML__ are `true` OR when calling `cleanPaste(text)` helper method.
+         * These replacements are executed before any medium editor defined replacements.
+         */
+        preCleanReplacements: [],
+
         /* cleanReplacements: [Array]
          * custom pairs (2 element arrays) of RegExp and replacement text to use during paste when
          * __forcePlainText__ or __cleanPastedHTML__ are `true` OR when calling `cleanPaste(text)` helper method.
+         * These replacements are executed after any medium editor defined replacements.
          */
         cleanReplacements: [],
 
@@ -78,11 +86,9 @@ var PasteHandler;
          */
         cleanTags: ['meta'],
 
-        /* ----- internal options needed from base ----- */
-        targetBlank: false, // deprecated (should use .getEditorOption() instead)
-        disableReturn: false, // deprecated (should use .getEditorOption() instead)
-
         init: function () {
+            MediumEditor.Extension.prototype.init.apply(this, arguments);
+
             if (this.forcePlainText || this.cleanPastedHTML) {
                 this.subscribe('editablePaste', this.handlePaste.bind(this));
             }
@@ -120,30 +126,32 @@ var PasteHandler;
                     return this.cleanPaste(pastedHTML);
                 }
 
-                if (!(this.disableReturn || element.getAttribute('data-disable-return'))) {
+                if (!(this.getEditorOption('disableReturn') || element.getAttribute('data-disable-return'))) {
                     paragraphs = pastedPlain.split(/[\r\n]+/g);
                     // If there are no \r\n in data, don't wrap in <p>
                     if (paragraphs.length > 1) {
                         for (p = 0; p < paragraphs.length; p += 1) {
                             if (paragraphs[p] !== '') {
-                                html += '<p>' + Util.htmlEntities(paragraphs[p]) + '</p>';
+                                html += '<p>' + MediumEditor.util.htmlEntities(paragraphs[p]) + '</p>';
                             }
                         }
                     } else {
-                        html = Util.htmlEntities(paragraphs[0]);
+                        html = MediumEditor.util.htmlEntities(paragraphs[0]);
                     }
                 } else {
-                    html = Util.htmlEntities(pastedPlain);
+                    html = MediumEditor.util.htmlEntities(pastedPlain);
                 }
-                Util.insertHTMLCommand(this.document, html);
+                MediumEditor.util.insertHTMLCommand(this.document, html);
             }
         },
 
         cleanPaste: function (text) {
-            var i, elList, workEl,
-                el = Selection.getSelectionElement(this.window),
+            var i, elList, tmp, workEl,
                 multiline = /<p|<br|<div/.test(text),
-                replacements = createReplacements().concat(this.cleanReplacements || []);
+                replacements = [].concat(
+                    this.preCleanReplacements || [],
+                    createReplacements(),
+                    this.cleanReplacements || []);
 
             for (i = 0; i < replacements.length; i += 1) {
                 text = text.replace(replacements[i][0], replacements[i][1]);
@@ -153,17 +161,14 @@ var PasteHandler;
                 return this.pasteHTML(text);
             }
 
+            // create a temporary div to cleanup block elements
+            tmp = this.document.createElement('div');
+
             // double br's aren't converted to p tags, but we want paragraphs.
-            elList = text.split('<br><br>');
-
-            this.pasteHTML('<p>' + elList.join('</p><p>') + '</p>');
-
-            try {
-                this.document.execCommand('insertText', false, '\n');
-            } catch (ignore) { }
+            tmp.innerHTML = '<p>' + text.split('<br><br>').join('</p><p>') + '</p>';
 
             // block element cleanup
-            elList = el.querySelectorAll('a,p,div,br');
+            elList = tmp.querySelectorAll('a,p,div,br');
             for (i = 0; i < elList.length; i += 1) {
                 workEl = elList[i];
 
@@ -172,7 +177,7 @@ var PasteHandler;
                 // elements are sometimes actually spaces.
                 workEl.innerHTML = workEl.innerHTML.replace(/\n/gi, ' ');
 
-                switch (workEl.tagName.toLowerCase()) {
+                switch (workEl.nodeName.toLowerCase()) {
                     case 'p':
                     case 'div':
                         this.filterCommonBlocks(workEl);
@@ -182,10 +187,12 @@ var PasteHandler;
                         break;
                 }
             }
+
+            this.pasteHTML(tmp.innerHTML);
         },
 
         pasteHTML: function (html, options) {
-            options = Util.defaults({}, options, {
+            options = MediumEditor.util.defaults({}, options, {
                 cleanAttrs: this.cleanAttrs,
                 cleanTags: this.cleanTags
             });
@@ -200,23 +207,22 @@ var PasteHandler;
             this.cleanupSpans(fragmentBody);
 
             elList = fragmentBody.querySelectorAll('*');
-
             for (i = 0; i < elList.length; i += 1) {
                 workEl = elList[i];
 
-                if ('a' === workEl.tagName.toLowerCase() && this.targetBlank) {
-                    Util.setTargetBlank(workEl);
+                if ('a' === workEl.nodeName.toLowerCase() && this.getEditorOption('targetBlank')) {
+                    MediumEditor.util.setTargetBlank(workEl);
                 }
 
-                Util.cleanupAttrs(workEl, options.cleanAttrs);
-                Util.cleanupTags(workEl, options.cleanTags);
+                MediumEditor.util.cleanupAttrs(workEl, options.cleanAttrs);
+                MediumEditor.util.cleanupTags(workEl, options.cleanTags);
             }
 
-            Util.insertHTMLCommand(this.document, fragmentBody.innerHTML.replace(/&nbsp;/g, ' '));
+            MediumEditor.util.insertHTMLCommand(this.document, fragmentBody.innerHTML.replace(/&nbsp;/g, ' '));
         },
 
         isCommonBlock: function (el) {
-            return (el && (el.tagName.toLowerCase() === 'p' || el.tagName.toLowerCase() === 'div'));
+            return (el && (el.nodeName.toLowerCase() === 'p' || el.nodeName.toLowerCase() === 'div'));
         },
 
         filterCommonBlocks: function (el) {
@@ -276,13 +282,15 @@ var PasteHandler;
                 el = spans[i];
 
                 // bail if span is in contenteditable = false
-                if (Util.traverseUp(el, isCEF)) {
+                if (MediumEditor.util.traverseUp(el, isCEF)) {
                     return false;
                 }
 
                 // remove empty spans, replace others with their contents
-                Util.unwrap(el, this.document);
+                MediumEditor.util.unwrap(el, this.document);
             }
         }
     });
+
+    MediumEditor.extensions.paste = PasteHandler;
 }());

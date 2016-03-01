@@ -1,10 +1,7 @@
-var AnchorForm;
 (function () {
     'use strict';
 
-    /*global Util, Selection, FormExtension */
-
-    AnchorForm = FormExtension.extend({
+    var AnchorForm = MediumEditor.extensions.form.extend({
         /* Anchor Form Options */
 
         /* customClassOption: [string]  (previously options.anchorButton + options.anchorButtonClass)
@@ -47,7 +44,12 @@ var AnchorForm;
         tagNames: ['a'],
         contentDefault: '<b>#</b>',
         contentFA: '<i class="fa fa-link"></i>',
-        key: 'K',
+
+        init: function () {
+            MediumEditor.extensions.form.prototype.init.apply(this, arguments);
+
+            this.subscribe('editableKeydown', this.handleKeydown.bind(this));
+        },
 
         // Called when the button the toolbar is clicked
         // Overrides ButtonExtension.handleClick
@@ -55,9 +57,11 @@ var AnchorForm;
             event.preventDefault();
             event.stopPropagation();
 
-            var selectedParentElement = Selection.getSelectedParentElement(Selection.getSelectionRange(this.document));
-            if (selectedParentElement.tagName &&
-                    selectedParentElement.tagName.toLowerCase() === 'a') {
+            var range = MediumEditor.selection.getSelectionRange(this.document);
+
+            if (range.startContainer.nodeName.toLowerCase() === 'a' ||
+                range.endContainer.nodeName.toLowerCase() === 'a' ||
+                MediumEditor.util.getClosestTag(MediumEditor.selection.getSelectedParentElement(range), 'a')) {
                 return this.execAction('unlink');
             }
 
@@ -69,9 +73,8 @@ var AnchorForm;
         },
 
         // Called when user hits the defined shortcut (CTRL / COMMAND + K)
-        // Overrides Button.handleKeydown
         handleKeydown: function (event) {
-            if (Util.isKey(event, this.key.charCodeAt(0)) && Util.isMetaCtrlKey(event)) {
+            if (MediumEditor.util.isKey(event, MediumEditor.util.keyCode.K) && MediumEditor.util.isMetaCtrlKey(event) && !event.shiftKey) {
                 this.handleClick(event);
             }
         },
@@ -106,10 +109,12 @@ var AnchorForm;
                 // fixme: ideally, this targetCheckboxText would be a formLabel too,
                 // figure out how to deprecate? also consider `fa-` icon default implcations.
                 template.push(
+                    '<div class="medium-editor-toolbar-form-row">',
                     '<input type="checkbox" class="medium-editor-toolbar-anchor-target">',
                     '<label>',
                     this.targetCheckboxText,
-                    '</label>'
+                    '</label>',
+                    '</div>'
                 );
             }
 
@@ -117,10 +122,12 @@ var AnchorForm;
                 // fixme: expose this `Button` text as a formLabel property, too
                 // and provide similar access to a `fa-` icon default.
                 template.push(
+                    '<div class="medium-editor-toolbar-form-row">',
                     '<input type="checkbox" class="medium-editor-toolbar-anchor-button">',
                     '<label>',
                     this.customClassOptionText,
-                    '</label>'
+                    '</label>',
+                    '</div>'
                 );
             }
 
@@ -138,16 +145,40 @@ var AnchorForm;
             this.getInput().value = '';
         },
 
-        showForm: function (linkValue) {
-            var input = this.getInput();
+        showForm: function (opts) {
+            var input = this.getInput(),
+                targetCheckbox = this.getAnchorTargetCheckbox(),
+                buttonCheckbox = this.getAnchorButtonCheckbox();
+
+            opts = opts || { url: '' };
+            // TODO: This is for backwards compatability
+            // We don't need to support the 'string' argument in 6.0.0
+            if (typeof opts === 'string') {
+                opts = {
+                    url: opts
+                };
+            }
 
             this.base.saveSelection();
-            this.base.hideToolbarDefaultActions();
+            this.hideToolbarDefaultActions();
             this.getForm().style.display = 'block';
-            this.base.setToolbarPosition();
+            this.setToolbarPosition();
 
-            input.value = linkValue || '';
+            input.value = opts.url;
             input.focus();
+
+            // If we have a target checkbox, we want it to be checked/unchecked
+            // based on whether the existing link has target=_blank
+            if (targetCheckbox) {
+                targetCheckbox.checked = opts.target === '_blank';
+            }
+
+            // If we have a custom class checkbox, we want it to be checked/unchecked
+            // based on whether an existing link already has the class
+            if (buttonCheckbox) {
+                var classList = opts.buttonClass ? opts.buttonClass.split(' ') : [];
+                buttonCheckbox.checked = (classList.indexOf(this.customClassOption) !== -1);
+            }
         },
 
         // Called by core when tearing down medium-editor (destroy)
@@ -163,19 +194,14 @@ var AnchorForm;
             delete this.form;
         },
 
-        // TODO: deprecate
-        deactivate: function () {
-            Util.deprecatedMethod.call(this, 'deactivate', 'destroy', arguments, 'v5.0.0');
-        },
-
         // core methods
 
         getFormOpts: function () {
             // no notion of private functions? wanted `_getFormOpts`
-            var targetCheckbox = this.getForm().querySelector('.medium-editor-toolbar-anchor-target'),
-                buttonCheckbox = this.getForm().querySelector('.medium-editor-toolbar-anchor-button'),
+            var targetCheckbox = this.getAnchorTargetCheckbox(),
+                buttonCheckbox = this.getAnchorButtonCheckbox(),
                 opts = {
-                    url: this.getInput().value
+                    url: this.getInput().value.trim()
                 };
 
             if (this.linkValidation) {
@@ -206,8 +232,18 @@ var AnchorForm;
         },
 
         checkLinkFormat: function (value) {
-            var re = /^(https?|ftps?|rtmpt?):\/\/|mailto:/;
-            return (re.test(value) ? '' : 'http://') + value;
+            // Matches any alphabetical characters followed by ://
+            // Matches protocol relative "//"
+            // Matches common external protocols "mailto:" "tel:" "maps:"
+            var urlSchemeRegex = /^([a-z]+:)?\/\/|^(mailto|tel|maps):/i,
+            // var te is a regex for checking if the string is a telephone number
+            telRegex = /^\+?\s?\(?(?:\d\s?\-?\)?){3,20}$/;
+            if (telRegex.test(value)) {
+                return 'tel:' + value;
+            } else {
+                // Check for URL scheme and default to http:// if none found
+                return (urlSchemeRegex.test(value) ? '' : 'http://') + value;
+            }
         },
 
         doFormCancel: function () {
@@ -252,16 +288,24 @@ var AnchorForm;
             return this.getForm().querySelector('input.medium-editor-toolbar-input');
         },
 
+        getAnchorTargetCheckbox: function () {
+            return this.getForm().querySelector('.medium-editor-toolbar-anchor-target');
+        },
+
+        getAnchorButtonCheckbox: function () {
+            return this.getForm().querySelector('.medium-editor-toolbar-anchor-button');
+        },
+
         handleTextboxKeyup: function (event) {
             // For ENTER -> create the anchor
-            if (event.keyCode === Util.keyCode.ENTER) {
+            if (event.keyCode === MediumEditor.util.keyCode.ENTER) {
                 event.preventDefault();
                 this.doFormSave();
                 return;
             }
 
             // For ESCAPE -> close the form
-            if (event.keyCode === Util.keyCode.ESCAPE) {
+            if (event.keyCode === MediumEditor.util.keyCode.ESCAPE) {
                 event.preventDefault();
                 this.doFormCancel();
             }
@@ -284,4 +328,6 @@ var AnchorForm;
             this.doFormCancel();
         }
     });
+
+    MediumEditor.extensions.anchor = AnchorForm;
 }());

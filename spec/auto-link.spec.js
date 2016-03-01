@@ -1,6 +1,4 @@
-/*global describe, it, expect, beforeEach, afterEach,
-    setupTestHelpers, selectElementContentsAndFire, fireEvent,
-    Util, jasmine, spyOn, MediumEditor */
+/*global fireEvent, selectElementContentsAndFire */
 
 describe('Autolink', function () {
     'use strict';
@@ -105,7 +103,7 @@ describe('Autolink', function () {
             ];
 
             function triggerAutolinking(element, key) {
-                var keyPressed = key || Util.keyCode.SPACE;
+                var keyPressed = key || MediumEditor.util.keyCode.SPACE;
                 fireEvent(element, 'keypress', {
                     keyCode: keyPressed
                 });
@@ -181,9 +179,9 @@ describe('Autolink', function () {
                 this.el.innerHTML = 'http://www.example.enter';
 
                 selectElementContentsAndFire(this.el);
-                triggerAutolinking(this.el, Util.keyCode.ENTER);
+                triggerAutolinking(this.el, MediumEditor.util.keyCode.ENTER);
                 links = this.el.getElementsByTagName('a');
-                expect(links.length).toBe(1);
+                expect(links.length).toBe(1, 'links length after ENTER');
                 expect(links[0].getAttribute('href')).toBe('http://www.example.enter');
                 expect(links[0].firstChild.getAttribute('data-auto-link')).toBe('true');
                 expect(links[0].textContent).toBe('http://www.example.enter');
@@ -191,9 +189,9 @@ describe('Autolink', function () {
                 this.el.innerHTML = 'http://www.example.space';
 
                 selectElementContentsAndFire(this.el);
-                triggerAutolinking(this.el, Util.keyCode.SPACE);
+                triggerAutolinking(this.el, MediumEditor.util.keyCode.SPACE);
                 links = this.el.getElementsByTagName('a');
-                expect(links.length).toBe(1);
+                expect(links.length).toBe(1, 'links length after SPACE');
                 expect(links[0].getAttribute('href')).toBe('http://www.example.space');
                 expect(links[0].firstChild.getAttribute('data-auto-link')).toBe('true');
                 expect(links[0].textContent).toBe('http://www.example.space');
@@ -235,7 +233,7 @@ describe('Autolink', function () {
                 triggerAutolinking(this.el);
                 var links = this.el.getElementsByTagName('a');
                 expect(links.length).toBe(1);
-                expect(this.el.firstChild.tagName.toLowerCase()).toBe('span');
+                expect(this.el.firstChild.nodeName.toLowerCase()).toBe('span');
                 expect(this.el.firstChild.textContent).toBe('Text with http://www.example.com inside!');
                 expect(this.el.firstChild.getElementsByTagName('a').length).toBe(1);
                 expect(links[0].getAttribute('href')).toBe('http://www.example.com');
@@ -398,6 +396,22 @@ describe('Autolink', function () {
                     'link should have been added');
             });
 
+            it('should create a link with target="_blank" when respective option is set to true', function () {
+                this.el = this.createElement('div', 'editor-blank', '');
+                this.newMediumEditor('.editor-blank', {
+                    autoLink: true,
+                    targetBlank: true
+                });
+
+                this.el.innerHTML = 'http://www.example.com';
+                selectElementContentsAndFire(this.el);
+                triggerAutolinking(this.el);
+                var links = this.el.getElementsByTagName('a');
+                expect(links.length).toBe(1);
+                expect(links[0].getAttribute('href')).toBe('http://www.example.com');
+                expect(links[0].target).toBe('_blank');
+            });
+
             it('should stop attempting to auto-link on keypress if an error is encountered', function () {
                 var spy = spyOn(MediumEditor.extensions.autoLink.prototype, 'performLinking').and.throwError('DOM ERROR');
 
@@ -410,6 +424,55 @@ describe('Autolink', function () {
                 // The previous error should prevent performLiking from being called again
                 triggerAutolinking(this.el);
                 expect(spy.calls.count()).toBe(1);
+            });
+
+            it('should create a link for a url within a list item', function () {
+                this.el.innerHTML = '<p>This is my list of links:</p><ol><li>http://www.example.com</li></ol><p>It is very impressive</p>';
+
+                selectElementContentsAndFire(this.el);
+                triggerAutolinking(this.el);
+                var links = this.el.getElementsByTagName('a'),
+                    li = this.el.querySelector('li');
+                expect(links.length).toBe(1, 'A single link was not automatically created');
+                expect(li.firstChild).toBe(links[0]);
+                expect(li.textContent).toBe('http://www.example.com');
+                expect(links[0].getAttribute('href')).toBe('http://www.example.com');
+                expect(links[0].firstChild.getAttribute('data-auto-link')).toBe('true');
+            });
+
+            // https://github.com/yabwe/medium-editor/issues/790
+            it('should not create a link when text in consecutive list items could be a valid url when combined', function () {
+                this.el.innerHTML = '<ul><li>text ending in a period.</li><li>name - text starting with a TLD</li></ul>';
+
+                selectElementContentsAndFire(this.el);
+                triggerAutolinking(this.el);
+                var links = this.el.getElementsByTagName('a');
+                expect(links.length).toBe(0, 'A link was created without a valid url being in the text');
+                expect(this.el.innerHTML).toBe('<ul><li>text ending in a period.</li><li>name - text starting with a TLD</li></ul>',
+                    'Content does not contain a valid url, but auto-link caused the content to change');
+            });
+
+            // https://github.com/yabwe/medium-editor/issues/790
+            it('should not create a link which spans multiple list items', function () {
+                this.el.innerHTML = '<blockquote><ol><li>abc</li><li>www.example.com</li></ol></blockquote>';
+
+                selectElementContentsAndFire(this.el);
+                triggerAutolinking(this.el);
+                var links = this.el.getElementsByTagName('a'),
+                    lastLi = this.el.querySelector('ol').lastChild;
+                expect(links.length).toBe(1, 'There should have been exactly 1 link created');
+                expect(links[0].getAttribute('href')).toBe('http://www.example.com');
+                expect(lastLi.firstChild).toBe(links[0]);
+                expect(lastLi.textContent).toBe('www.example.com');
+            });
+
+            it('should not create a link which spans multiple list items', function () {
+                this.el.innerHTML = '<blockquote><ol><li>www</li><li>.example.com</li></ol></blockquote>';
+
+                selectElementContentsAndFire(this.el);
+                triggerAutolinking(this.el);
+                var links = this.el.getElementsByTagName('a');
+                expect(links.length).toBe(0, 'There should not have been any links created');
             });
         });
     });
