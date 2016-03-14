@@ -930,8 +930,8 @@ MediumEditor.extensions = {};
             // If the blockContainer is already the element type being passed in
             // treat it as 'undo' formatting and just convert it to a <p>
             if (blockContainer && tagName === blockContainer.nodeName.toLowerCase()) {
-                tagName = 'p';
-                //tagName = null; // MAGLR
+                //tagName = 'p';
+                tagName = null; // MAGLR
 
             }
 
@@ -6031,7 +6031,7 @@ MediumEditor.extensions = {};
             } else if (!this.options.disableDoubleReturn && MediumEditor.util.isKey(event, MediumEditor.util.keyCode.ENTER)) {
                 // hitting return in the begining of a header will create empty header elements before the current one
                 // instead, make "<p><br></p>" element, which are what happens if you hit return in an empty paragraph
-                p = this.options.ownerDocument.createElement('br');
+                p = this.options.ownerDocument.createElement('br'); // MAGLR
                 //p.innerHTML = '<br>';
                 node.previousElementSibling.parentNode.insertBefore(p, node);
                 event.preventDefault();
@@ -6079,7 +6079,7 @@ MediumEditor.extensions = {};
             // create a paragraph before the list
             //p = this.options.ownerDocument.createElement('p');
             //p.innerHTML = '<br>';
-            p = '<br>';
+            p = '<br>'; // MAGLR
             node.parentElement.parentElement.insertBefore(p, node.parentElement);
 
             // move the cursor into the new paragraph
@@ -6109,8 +6109,8 @@ MediumEditor.extensions = {};
         }
 
         if (MediumEditor.util.isMediumEditorElement(node) && node.children.length === 0) {
-            this.options.ownerDocument.execCommand('formatBlock', false, 'p');
-            //this.options.ownerDocument.execCommand('formatBlock', false, null); //MAGLR
+            //this.options.ownerDocument.execCommand('formatBlock', false, 'p');
+            this.options.ownerDocument.execCommand('formatBlock', false, null); //MAGLR
         }
 
         if (MediumEditor.util.isKey(event, MediumEditor.util.keyCode.ENTER) && !MediumEditor.util.isListItem(node)) {
