@@ -4977,8 +4977,8 @@ MediumEditor.extensions = {};
                     if (paragraphs.length > 1) {
                         for (p = 0; p < paragraphs.length; p += 1) {
                             if (paragraphs[p] !== '') {
-                                html += '<p>' + MediumEditor.util.htmlEntities(paragraphs[p]) + '</p>';
-                                //html += MediumEditor.util.htmlEntities(paragraphs[p]) + '<br />'; // MAGLR
+                                //html += '<p>' + MediumEditor.util.htmlEntities(paragraphs[p]) + '</p>';
+                                html += MediumEditor.util.htmlEntities(paragraphs[p]) + '<br />'; // MAGLR
                             }
                         }
                     } else {
